@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bioprocess Cell Growth & Protein Titer Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        condA: '#10b981',        // Emerald green
+                        condB: '#f59e0b',        // Amber/Orange
+                        titerA: '#6366f1',       // Indigo
+                        titerB: '#ec4899',       // Pink
+                        tcd: '#94a3b8',          // Slate
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles & animations */
+        input[type=range] {
+            accent-color: #6366f1;
+        }
+        .glow-indigo { box-shadow: 0 0 15px rgba(99, 102, 241, 0.35); }
+        .glow-emerald { box-shadow: 0 0 15px rgba(16, 185, 129, 0.35); }
+        .glow-amber { box-shadow: 0 0 15px rgba(245, 158, 11, 0.35); }
+
+        .flask-glass {
+            background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+            backdrop-filter: blur(8px);
+        }
+
+        /* Custom scrollbar for parameter panels */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="h-full font-sans antialiased bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
+
+    <!-- Top Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-indigo-600/20 rounded-xl text-indigo-400 border border-indigo-500/30">
+                    <i data-lucide="dna" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        Bioprocess Lab <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/30">VCD & Titer Simulator</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Cell Kinetics, Total VCD & Protein Specific Productivity ($q_p$)</p>
+                </div>
+            </div>
+
+            <!-- Controls Header Right -->
+            <div class="flex items-center gap-3">
+                <button id="playBtn" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-indigo-600/25 active:scale-95">
+                    <i data-lucide="play" class="w-4 h-4 fill-current" id="playIcon"></i>
+                    <span id="playText">Run Culture</span>
+                </button>
+                <button id="resetBtn" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm border border-slate-700 transition-all hover:text-white" title="Reset Default Parameters">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- LEFT COLUMN: Time Control, Dual Cond Parameters & Bioreactor View (5 cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+            
+            <!-- Time Controller Panel -->
+            <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <label for="timeSlider" class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <i data-lucide="clock" class="w-4 h-4 text-indigo-400"></i>
+                        Culture Duration Scrubber
+                    </label>
+                    <span id="currentTimeDisplay" class="font-mono text-xl font-bold text-indigo-400 bg-indigo-950/60 border border-indigo-800/50 px-3 py-0.5 rounded-lg">
+                        Day 0.00
+                    </span>
+                </div>
+
+                <input type="range" id="timeSlider" min="0" max="14" step="0.05" value="0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer mb-2">
+                
+                <div class="flex justify-between text-xs text-slate-400 font-mono">
+                    <span>Day 0</span>
+                    <span>Day 3.5</span>
+                    <span>Day 7.0</span>
+                    <span>Day 10.5</span>
+                    <span>Day 14</span>
+                </div>
+            </div>
+
+            <!-- Dual Condition Parameter Tabs -->
+            <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-xl flex flex-col gap-4">
+                
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i>
+                        Kinetic & Expression Parameters
+                    </h2>
+
+                    <!-- Dual Curve Toggle -->
+                    <label class="inline-flex items-center cursor-pointer gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                        <input type="checkbox" id="enableCondB" class="sr-only peer">
+                        <div class="relative w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500"></div>
+                        <span class="text-xs font-semibold text-slate-300">Compare (Cond B)</span>
+                    </label>
+                </div>
+
+                <!-- Condition Selector Tabs -->
+                <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button id="tabCondA" class="flex-1 py-1.5 rounded-lg font-semibold transition-all bg-emerald-600/20 text-emerald-300 border border-emerald-500/30">
+                        Condition A
+                    </button>
+                    <button id="tabCondB" class="flex-1 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-slate-200 transition-all opacity-50 cursor-not-allowed" disabled>
+                        Condition B
+                    </button>
+                </div>
+
+                <!-- PARAMETERS CONTAINER -->
+                <div id="paramControls" class="flex flex-col gap-3">
+                    
+                    <!-- 1. Specific Productivity (qp) Slider -->
+                    <div class="p-3 bg-indigo-950/30 rounded-xl border border-indigo-800/40 space-y-1">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-indigo-200 font-semibold flex items-center gap-1.5">
+                                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                Specific Productivity ($q_p$)
+                            </span>
+                            <span id="qpVal" class="font-mono text-indigo-400 font-bold">20.0 pg/cell/day</span>
+                        </div>
+                        <input type="range" id="paramQp" min="0" max="60" step="1" value="20" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                        <p class="text-[11px] text-slate-400">Protein production rate per viable cell per day ($q_p$).</p>
+                    </div>
+
+                    <!-- Initial Cell Density (N0) -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-300 font-medium">Initial Cell Density ($N_0$)</span>
+                            <span id="initialDensityVal" class="font-mono text-cyan-400 font-semibold">0.80 x10⁶ cells/mL</span>
+                        </div>
+                        <input type="range" id="paramInitialDensity" min="0.1" max="20.0" step="0.1" value="0.8" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- 2. Lag Duration -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-300 font-medium">Lag Phase Duration</span>
+                            <span id="lagVal" class="font-mono text-blue-400 font-semibold">1.50 Days</span>
+                        </div>
+                        <input type="range" id="paramLag" min="0.1" max="4.0" step="0.1" value="1.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- 3. Growth Rate (mu) -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-300 font-medium">Specific Growth Rate ($\mu$)</span>
+                            <span id="growthVal" class="font-mono text-emerald-400 font-semibold">1.20 /day</span>
+                        </div>
+                        <input type="range" id="paramGrowth" min="0.2" max="2.5" step="0.05" value="1.2" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- 4. Peak VCD / Carrying Capacity (K) -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-300 font-medium">Peak VCD Ceiling ($K$)</span>
+                            <span id="capVal" class="font-mono text-amber-400 font-semibold">18.0 x10⁶ cells/mL</span>
+                        </div>
+                        <input type="range" id="paramCapacity" min="1" max="200" step="0.5" value="18" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- 5. Death Rate (d) -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-300 font-medium">Death Rate Constant ($d$)</span>
+                            <span id="deathVal" class="font-mono text-red-400 font-semibold">0.45 /day</span>
+                        </div>
+                        <input type="range" id="paramDeath" min="0" max="1.5" step="0.01" value="0.45" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Dual Microscopic / Bioreactor Visual Chamber -->
+            <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-xl flex flex-col gap-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <i data-lucide="microscope" class="w-4 h-4 text-emerald-400"></i>
+                        Microscopic Culture View
+                    </h2>
+                    <span id="phaseBadge" class="text-xs font-semibold px-2.5 py-1 rounded-full border transition-all duration-300 bg-blue-500/10 text-blue-400 border-blue-500/30">
+                        LAG PHASE
+                    </span>
+                </div>
+
+                <!-- Simulation Canvas (Viable Emerald vs Dead Red dots) -->
+                <div class="relative w-full h-44 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden flex items-center justify-center">
+                    <div id="turbidityBg" class="absolute inset-0 bg-indigo-900/0 transition-colors duration-500 pointer-events-none"></div>
+                    <canvas id="microScopeCanvas" class="absolute inset-0 w-full h-full z-10"></canvas>
+
+                    <!-- Real-time metrics overlay -->
+                    <div class="absolute bottom-2 left-2 right-2 bg-slate-900/85 backdrop-blur-md px-3 py-2 rounded-lg border border-slate-800 z-20 grid grid-cols-2 gap-2 text-xs font-mono">
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">VCD (Cond A)</span>
+                            <span id="vcdDisplayA" class="text-emerald-400 font-bold">1.00 x10⁶ /mL</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">Protein Titer (A)</span>
+                            <span id="titerDisplayA" class="text-indigo-400 font-bold">0.00 g/L</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: Chart, Analytics KPIs & Comparison (7 cols) -->
+        <div class="lg:col-span-7 flex flex-col gap-6">
+
+            <!-- Chart Container Card -->
+            <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-xl flex flex-col gap-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="line-chart" class="w-5 h-5 text-indigo-400"></i>
+                        <h2 class="text-base font-semibold text-slate-100">Cell Density & Protein Titer Trajectory</h2>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <!-- Scale Toggle -->
+                        <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                            <button id="scaleLinear" class="px-2.5 py-1 rounded-lg font-medium transition-all bg-indigo-600 text-white shadow-sm">
+                                Linear
+                            </button>
+                            <button id="scaleLog" class="px-2.5 py-1 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition-all">
+                                Log₁₀
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Multi-Axis Chart Canvas -->
+                <div class="relative w-full h-[360px] sm:h-[400px] bg-slate-950/60 rounded-xl p-3 border border-slate-800/80">
+                    <canvas id="growthChart"></canvas>
+                </div>
+
+                <!-- Chart Legend Bar -->
+                <div class="flex flex-wrap items-center justify-between text-xs pt-1 gap-2 border-t border-slate-800/60">
+                    <div class="flex items-center gap-3">
+                        <span class="flex items-center gap-1.5 text-emerald-400 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500"></span> VCD A
+                        </span>
+                        <span class="flex items-center gap-1.5 text-slate-400">
+                            <span class="w-3 h-0.5 bg-slate-400"></span> TCD (Total) A
+                        </span>
+                        <span class="flex items-center gap-1.5 text-indigo-400 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-indigo-500"></span> Titer A (g/L)
+                        </span>
+                    </div>
+
+                    <div id="legendCondB" class="flex items-center gap-3 hidden">
+                        <span class="flex items-center gap-1.5 text-amber-400 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-amber-500"></span> VCD B
+                        </span>
+                        <span class="flex items-center gap-1.5 text-pink-400 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-pink-500"></span> Titer B (g/L)
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics & Bioprocess KPI Dashboard -->
+            <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between mb-4 border-b border-slate-800/80 pb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                            <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-white">Bioprocess Key Performance Indicators (KPIs)</h3>
+                            <p class="text-xs text-slate-400">Harvest Yields & Cumulative Metrics at Day <span id="kpiDay">0.0</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPI Grid Table -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <!-- Peak VCD -->
+                    <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                        <span class="text-xs text-slate-400 block mb-1">Peak VCD</span>
+                        <div>
+                            <div id="kpiPeakVcdA" class="text-sm font-bold text-emerald-400 font-mono">18.0 x10⁶</div>
+                            <div id="kpiPeakVcdB" class="text-xs text-amber-400 font-mono hidden">B: --</div>
+                        </div>
+                    </div>
+
+                    <!-- Viability (%) -->
+                    <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                        <span class="text-xs text-slate-400 block mb-1">Viability (%)</span>
+                        <div>
+                            <div id="kpiViabilityA" class="text-sm font-bold text-emerald-400 font-mono">100.0 %</div>
+                            <div id="kpiViabilityB" class="text-xs text-amber-400 font-mono hidden">B: --</div>
+                        </div>
+                    </div>
+
+                    <!-- Integral VCD (IVCD) -->
+                    <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                        <span class="text-xs text-slate-400 block mb-1">IVCD (Integral)</span>
+                        <div>
+                            <div id="kpiIvcdA" class="text-sm font-bold text-blue-400 font-mono">0.00 10⁶ cell·d/mL</div>
+                            <div id="kpiIvcdB" class="text-xs text-pink-400 font-mono hidden">B: --</div>
+                        </div>
+                    </div>
+
+                    <!-- Final Protein Titer -->
+                    <div class="bg-slate-950/80 p-3.5 rounded-xl border border-indigo-900/50 flex flex-col justify-between">
+                        <span class="text-xs text-indigo-300 font-medium block mb-1">Protein Titer</span>
+                        <div>
+                            <div id="kpiTiterA" class="text-base font-bold text-indigo-400 font-mono">0.00 g/L</div>
+                            <div id="kpiTiterB" class="text-xs text-pink-400 font-mono hidden">B: --</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-800/60 text-xs text-slate-400 flex items-center justify-between font-mono">
+                    <span>Formula: Titer(t) = $q_p \times \text{IVCD}(t)$</span>
+                    <span class="text-indigo-400">$q_p$ Slider direct impact active</span>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // --- Core Application State ---
+        const state = {
+            currentTime: 0,       // Days (0 to 14)
+            maxDays: 14,
+            isPlaying: false,
+            scaleType: 'linear',  // 'linear' | 'logarithmic'
+            enableCondB: false,
+            activeTab: 'A',       // 'A' | 'B'
+            animationId: null,
+
+            // Biological & Productivity Parameters for Condition A & B
+            params: {
+                A: {
+                    qp: 20,              // pg/cell/day
+                    initialDensity: 0.8, // Initial seeding density (x10^6 cells/mL)
+                    lagDuration: 1.5,    // Days
+                    growthRate: 1.2,     // mu (/day)
+                    carryingCapacity: 18, // Peak VCD (x10^6 cells/mL)
+                    deathRate: 0.45      // d (/day)
+                },
+                B: {
+                    qp: 35,              // pg/cell/day
+                    initialDensity: 1.0, // Initial seeding density (x10^6 cells/mL)
+                    lagDuration: 1.2,    // Days
+                    growthRate: 1.4,     // mu (/day)
+                    carryingCapacity: 25, // Peak VCD (x10^6 cells/mL)
+                    deathRate: 0.35      // d (/day)
+                }
+            }
+        };
+
+        // --- Microscopic Visual Canvas ---
+        const microCanvas = document.getElementById('microScopeCanvas');
+        const ctxMicro = microCanvas.getContext('2d');
+        let particles = [];
+
+        function resizeMicroCanvas() {
+            microCanvas.width = microCanvas.parentElement.clientWidth;
+            microCanvas.height = microCanvas.parentElement.clientHeight;
+        }
+
+        class Particle {
+            constructor(w, h, isDead = false) {
+                this.x = Math.random() * w;
+                this.y = Math.random() * h;
+                this.radius = Math.random() * 2 + 2.5;
+                this.vx = (Math.random() - 0.5) * 0.7;
+                this.vy = (Math.random() - 0.5) * 0.7;
+                this.isDead = isDead;
+            }
+
+            update(w, h) {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > w) this.vx *= -1;
+                if (this.y < 0 || this.y > h) this.vy *= -1;
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.isDead ? 'rgba(239, 68, 68, 0.65)' : 'rgba(16, 185, 129, 0.9)';
+                ctx.fill();
+            }
+        }
+
+        function renderMicroscope(vcd, deadCount) {
+            const w = microCanvas.width || 300;
+            const h = microCanvas.height || 180;
+            ctxMicro.clearRect(0, 0, w, h);
+
+            // Scale particle density visual display logarithmically/proportioned for high ceiling max (up to 200M cells/mL)
+            const totalVisual = Math.min(Math.floor(Math.pow(vcd + deadCount, 0.7) * 8), 250);
+            const deadRatio = (vcd + deadCount) > 0 ? deadCount / (vcd + deadCount) : 0;
+
+            if (Math.abs(particles.length - totalVisual) > 8) {
+                particles = [];
+                for (let i = 0; i < totalVisual; i++) {
+                    const isDead = Math.random() < deadRatio;
+                    particles.push(new Particle(w, h, isDead));
+                }
+            }
+
+            particles.forEach(p => {
+                p.update(w, h);
+                p.draw(ctxMicro);
+            });
+        }
+
+        // --- Kinematics Math Calculations ---
+        // Computes VCD, Dead Cells, TCD, IVCD, and Protein Titer for a given condition set
+        function computeCultureTimeline(p) {
+            const points = [];
+            const step = 0.05;
+            const N0 = p.initialDensity; // Initial seeding density (x10^6 cells/mL)
+            const K = Math.max(p.carryingCapacity, N0);
+            const mu = p.growthRate;
+            const tLag = p.lagDuration;
+            const d = p.deathRate;
+            const qp = p.qp; // pg/cell/day
+
+            let cumulativeIVCD = 0;
+            let prevVCD = N0;
+            let totalAccumulatedDead = 0;
+
+            for (let t = 0; t <= state.maxDays; t += step) {
+                let vcd = N0;
+
+                if (t <= tLag) {
+                    vcd = N0 + (t / tLag) * 0.08;
+                } else {
+                    const tGrowth = t - tLag;
+                    const tStationaryPeak = 5.0; // Days after growth before death onset
+
+                    if (tGrowth <= tStationaryPeak) {
+                        // Logistic Growth
+                        const expTerm = Math.exp(-mu * tGrowth);
+                        vcd = K / (1 + ((K - N0) / N0) * expTerm);
+                    } else {
+                        // Death phase decline
+                        const tDeath = tGrowth - tStationaryPeak;
+                        const maxPopReached = K / (1 + ((K - N0) / N0) * Math.exp(-mu * tStationaryPeak));
+                        vcd = maxPopReached * Math.exp(-d * tDeath);
+
+                        // Accumulate dead cell density
+                        const dyingRate = d * vcd;
+                        totalAccumulatedDead += dyingRate * step;
+                    }
+                }
+
+                // Numerical integration for IVCD (Trapezoidal Rule)
+                if (t > 0) {
+                    cumulativeIVCD += ((prevVCD + vcd) / 2) * step;
+                }
+                prevVCD = vcd;
+
+                const tcd = vcd + totalAccumulatedDead;
+                const viability = tcd > 0 ? Math.min(100, Math.max(0, (vcd / tcd) * 100)) : 100;
+
+                // Protein Titer (g/L) = qp (pg/cell/day) * IVCD (10^6 cell-days/mL) * 10^-3
+                const titer = (qp * cumulativeIVCD * 1000) / 1e6; // Converted to g/L
+
+                points.push({
+                    x: parseFloat(t.toFixed(2)),
+                    vcd: parseFloat(vcd.toFixed(3)),
+                    tcd: parseFloat(tcd.toFixed(3)),
+                    dead: parseFloat(totalAccumulatedDead.toFixed(3)),
+                    viability: parseFloat(viability.toFixed(1)),
+                    ivcd: parseFloat(cumulativeIVCD.toFixed(2)),
+                    titer: parseFloat(titer.toFixed(3))
+                });
+            }
+            return points;
+        }
+
+        // --- Chart.js Configuration & Management ---
+        let chartInstance = null;
+
+        function initChart() {
+            const ctxChart = document.getElementById('growthChart').getContext('2d');
+            const dataA = computeCultureTimeline(state.params.A);
+
+            chartInstance = new Chart(ctxChart, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        // Condition A - VCD
+                        {
+                            label: 'VCD A (x10⁶ cells/mL)',
+                            data: dataA.map(d => ({ x: d.x, y: d.vcd })),
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 2.5,
+                            pointRadius: 0,
+                            tension: 0.3,
+                            yAxisID: 'yCell'
+                        },
+                        // Condition A - Total Cell Density (TCD)
+                        {
+                            label: 'TCD A (x10⁶ cells/mL)',
+                            data: dataA.map(d => ({ x: d.x, y: d.tcd })),
+                            borderColor: '#94a3b8',
+                            borderWidth: 1.5,
+                            borderDash: [4, 4],
+                            pointRadius: 0,
+                            tension: 0.3,
+                            yAxisID: 'yCell'
+                        },
+                        // Condition A - Protein Titer (g/L)
+                        {
+                            label: 'Titer A (g/L)',
+                            data: dataA.map(d => ({ x: d.x, y: d.titer })),
+                            borderColor: '#6366f1',
+                            borderWidth: 2.5,
+                            pointRadius: 0,
+                            tension: 0.3,
+                            yAxisID: 'yTiter'
+                        },
+
+                        // Condition B - VCD (Hidden by default)
+                        {
+                            label: 'VCD B (x10⁶ cells/mL)',
+                            data: [],
+                            borderColor: '#f59e0b',
+                            borderWidth: 2.5,
+                            pointRadius: 0,
+                            tension: 0.3,
+                            yAxisID: 'yCell',
+                            hidden: true
+                        },
+                        // Condition B - Protein Titer (g/L)
+                        {
+                            label: 'Titer B (g/L)',
+                            data: [],
+                            borderColor: '#ec4899',
+                            borderWidth: 2.5,
+                            pointRadius: 0,
+                            tension: 0.3,
+                            yAxisID: 'yTiter',
+                            hidden: true
+                        },
+
+                        // Current Time Marker Point
+                        {
+                            label: 'Time Scrubber',
+                            data: [{ x: 0, y: dataA[0].vcd }],
+                            pointRadius: 7,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#6366f1',
+                            pointBorderWidth: 3,
+                            showLine: false,
+                            yAxisID: 'yCell'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'nearest', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            titleColor: '#e2e8f0',
+                            borderColor: '#334155',
+                            borderWidth: 1,
+                            padding: 10
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            title: { display: true, text: 'Culture Time (Days)', color: '#94a3b8' },
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: { color: '#64748b' },
+                            min: 0, max: 14
+                        },
+                        yCell: {
+                            type: state.scaleType,
+                            position: 'left',
+                            title: { display: true, text: 'Cell Density (x10⁶ / mL)', color: '#10b981' },
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: { color: '#10b981' },
+                            suggestedMin: 0.1,
+                            suggestedMax: 200
+                        },
+                        yTiter: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: 'Protein Titer (g/L)', color: '#818cf8' },
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#818cf8' },
+                            suggestedMin: 0,
+                            suggestedMax: 10.0
+                        }
+                    }
+                }
+            });
+        }
+
+        // Refresh Chart & Parameter State
+        function updateChartDatasets() {
+            if (!chartInstance) return;
+
+            const dataA = computeCultureTimeline(state.params.A);
+            chartInstance.data.datasets[0].data = dataA.map(d => ({ x: d.x, y: d.vcd }));
+            chartInstance.data.datasets[1].data = dataA.map(d => ({ x: d.x, y: d.tcd }));
+            chartInstance.data.datasets[2].data = dataA.map(d => ({ x: d.x, y: d.titer }));
+
+            if (state.enableCondB) {
+                const dataB = computeCultureTimeline(state.params.B);
+                chartInstance.data.datasets[3].data = dataB.map(d => ({ x: d.x, y: d.vcd }));
+                chartInstance.data.datasets[4].data = dataB.map(d => ({ x: d.x, y: d.titer }));
+                chartInstance.data.datasets[3].hidden = false;
+                chartInstance.data.datasets[4].hidden = false;
+            } else {
+                chartInstance.data.datasets[3].hidden = true;
+                chartInstance.data.datasets[4].hidden = true;
+            }
+
+            chartInstance.update();
+            updateUI(state.currentTime);
+        }
+
+        // Dynamic UI Updates based on Time Scrubber
+        function updateUI(time) {
+            const dataA = computeCultureTimeline(state.params.A);
+            const index = Math.min(Math.floor(time / 0.05), dataA.length - 1);
+            const curA = dataA[index];
+
+            document.getElementById('currentTimeDisplay').innerText = `Day ${time.toFixed(2)}`;
+            document.getElementById('timeSlider').value = time;
+            document.getElementById('kpiDay').innerText = time.toFixed(1);
+
+            // Update Condition A Metrics
+            document.getElementById('vcdDisplayA').innerText = `${curA.vcd.toFixed(2)} x10⁶ /mL`;
+            document.getElementById('titerDisplayA').innerText = `${curA.titer.toFixed(2)} g/L`;
+
+            document.getElementById('kpiPeakVcdA').innerText = `${Math.max(...dataA.map(d => d.vcd)).toFixed(1)} x10⁶`;
+            document.getElementById('kpiViabilityA').innerText = `${curA.viability}%`;
+            document.getElementById('kpiIvcdA').innerText = `${curA.ivcd.toFixed(1)} 10⁶ cell·d`;
+            document.getElementById('kpiTiterA').innerText = `${curA.titer.toFixed(2)} g/L`;
+
+            // Condition B Metrics (If Enabled)
+            if (state.enableCondB) {
+                const dataB = computeCultureTimeline(state.params.B);
+                const curB = dataB[Math.min(Math.floor(time / 0.05), dataB.length - 1)];
+
+                document.getElementById('kpiPeakVcdB').innerText = `B: ${Math.max(...dataB.map(d => d.vcd)).toFixed(1)} x10⁶`;
+                document.getElementById('kpiViabilityB').innerText = `B: ${curB.viability}%`;
+                document.getElementById('kpiIvcdB').innerText = `B: ${curB.ivcd.toFixed(1)} 10⁶ cell·d`;
+                document.getElementById('kpiTiterB').innerText = `B: ${curB.titer.toFixed(2)} g/L`;
+            }
+
+            // Phase Determination
+            const tLag = state.params.A.lagDuration;
+            let phase = 'LAG PHASE';
+            if (time >= tLag && time < tLag + 5) phase = 'LOG (EXP) PHASE';
+            else if (time >= tLag + 5 && time < tLag + 6) phase = 'STATIONARY PHASE';
+            else if (time >= tLag + 6) phase = 'DEATH PHASE';
+            document.getElementById('phaseBadge').innerText = phase;
+
+            // Chart Scrubber Marker Update
+            if (chartInstance) {
+                chartInstance.data.datasets[5].data = [{ x: time, y: curA.vcd }];
+                chartInstance.update('none');
+            }
+
+            renderMicroscope(curA.vcd, curA.dead);
+        }
+
+        // Sync Parameter Sliders with Active Condition State Tab
+        function syncSlidersWithState() {
+            const p = state.params[state.activeTab];
+            document.getElementById('paramQp').value = p.qp;
+            document.getElementById('paramInitialDensity').value = p.initialDensity;
+            document.getElementById('paramLag').value = p.lagDuration;
+            document.getElementById('paramGrowth').value = p.growthRate;
+            document.getElementById('paramCapacity').value = p.carryingCapacity;
+            document.getElementById('paramDeath').value = p.deathRate;
+
+            document.getElementById('qpVal').innerText = `${p.qp.toFixed(1)} pg/cell/day`;
+            document.getElementById('initialDensityVal').innerText = `${p.initialDensity.toFixed(2)} x10⁶ cells/mL`;
+            document.getElementById('lagVal').innerText = `${p.lagDuration.toFixed(2)} Days`;
+            document.getElementById('growthVal').innerText = `${p.growthRate.toFixed(2)} /day`;
+            document.getElementById('capVal').innerText = `${p.carryingCapacity.toFixed(1)} x10⁶ cells/mL`;
+            document.getElementById('deathVal').innerText = `${p.deathRate.toFixed(2)} /day`;
+        }
+
+        // Simulation Run Loop
+        function togglePlay() {
+            state.isPlaying = !state.isPlaying;
+            const playIcon = document.getElementById('playIcon');
+            const playText = document.getElementById('playText');
+
+            if (state.isPlaying) {
+                playIcon.setAttribute('data-lucide', 'pause');
+                playText.innerText = 'Pause';
+                if (state.currentTime >= state.maxDays) state.currentTime = 0;
+
+                let lastTimestamp = performance.now();
+                function step(now) {
+                    if (!state.isPlaying) return;
+                    const delta = (now - lastTimestamp) / 1000;
+                    lastTimestamp = now;
+
+                    state.currentTime += delta * 1.2;
+
+                    if (state.currentTime >= state.maxDays) {
+                        state.currentTime = state.maxDays;
+                        state.isPlaying = false;
+                        playIcon.setAttribute('data-lucide', 'play');
+                        playText.innerText = 'Run Culture';
+                        lucide.createIcons();
+                    }
+
+                    updateUI(state.currentTime);
+                    if (state.isPlaying) state.animationId = requestAnimationFrame(step);
+                }
+                state.animationId = requestAnimationFrame(step);
+            } else {
+                playIcon.setAttribute('data-lucide', 'play');
+                playText.innerText = 'Run Culture';
+                if (state.animationId) cancelAnimationFrame(state.animationId);
+            }
+            lucide.createIcons();
+        }
+
+        // Event Setup
+        function setupEventListeners() {
+            document.getElementById('timeSlider').addEventListener('input', (e) => {
+                state.currentTime = parseFloat(e.target.value);
+                if (state.isPlaying) togglePlay();
+                updateUI(state.currentTime);
+            });
+
+            // Specific Productivity qp Slider
+            document.getElementById('paramQp').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                state.params[state.activeTab].qp = val;
+                document.getElementById('qpVal').innerText = `${val.toFixed(1)} pg/cell/day`;
+                updateChartDatasets();
+            });
+
+            // Initial Cell Density N0 Slider
+            document.getElementById('paramInitialDensity').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                state.params[state.activeTab].initialDensity = val;
+                document.getElementById('initialDensityVal').innerText = `${val.toFixed(2)} x10⁶ cells/mL`;
+                updateChartDatasets();
+            });
+
+            document.getElementById('paramLag').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                state.params[state.activeTab].lagDuration = val;
+                document.getElementById('lagVal').innerText = `${val.toFixed(2)} Days`;
+                updateChartDatasets();
+            });
+
+            document.getElementById('paramGrowth').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                state.params[state.activeTab].growthRate = val;
+                document.getElementById('growthVal').innerText = `${val.toFixed(2)} /day`;
+                updateChartDatasets();
+            });
+
+            document.getElementById('paramCapacity').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                state.params[state.activeTab].carryingCapacity = val;
+                document.getElementById('capVal').innerText = `${val.toFixed(1)} x10⁶ cells/mL`;
+                updateChartDatasets();
+            });
+
+            document.getElementById('paramDeath').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                state.params[state.activeTab].deathRate = val;
+                document.getElementById('deathVal').innerText = `${val.toFixed(2)} /day`;
+                updateChartDatasets();
+            });
+
+            // Condition B Enable Checkbox
+            document.getElementById('enableCondB').addEventListener('change', (e) => {
+                state.enableCondB = e.target.checked;
+                const tabB = document.getElementById('tabCondB');
+                const legendB = document.getElementById('legendCondB');
+                const kpiBs = [
+                    document.getElementById('kpiPeakVcdB'),
+                    document.getElementById('kpiViabilityB'),
+                    document.getElementById('kpiIvcdB'),
+                    document.getElementById('kpiTiterB')
+                ];
+
+                if (state.enableCondB) {
+                    tabB.disabled = false;
+                    tabB.classList.remove('opacity-50', 'cursor-not-allowed');
+                    legendB.classList.remove('hidden');
+                    kpiBs.forEach(el => el.classList.remove('hidden'));
+                } else {
+                    tabB.disabled = true;
+                    tabB.classList.add('opacity-50', 'cursor-not-allowed');
+                    legendB.classList.add('hidden');
+                    kpiBs.forEach(el => el.classList.add('hidden'));
+                    if (state.activeTab === 'B') {
+                        document.getElementById('tabCondA').click();
+                    }
+                }
+                updateChartDatasets();
+            });
+
+            // Tab Switchers
+            document.getElementById('tabCondA').addEventListener('click', () => {
+                state.activeTab = 'A';
+                document.getElementById('tabCondA').className = "flex-1 py-1.5 rounded-lg font-semibold transition-all bg-emerald-600/20 text-emerald-300 border border-emerald-500/30";
+                document.getElementById('tabCondB').className = "flex-1 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-slate-200 transition-all";
+                syncSlidersWithState();
+            });
+
+            document.getElementById('tabCondB').addEventListener('click', () => {
+                if (!state.enableCondB) return;
+                state.activeTab = 'B';
+                document.getElementById('tabCondB').className = "flex-1 py-1.5 rounded-lg font-semibold transition-all bg-amber-600/20 text-amber-300 border border-amber-500/30";
+                document.getElementById('tabCondA').className = "flex-1 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-slate-200 transition-all";
+                syncSlidersWithState();
+            });
+
+            // Scale Buttons
+            document.getElementById('scaleLinear').addEventListener('click', () => {
+                state.scaleType = 'linear';
+                document.getElementById('scaleLinear').className = "px-2.5 py-1 rounded-lg font-medium transition-all bg-indigo-600 text-white shadow-sm";
+                document.getElementById('scaleLog').className = "px-2.5 py-1 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition-all";
+                chartInstance.options.scales.yCell.type = 'linear';
+                chartInstance.update();
+            });
+
+            document.getElementById('scaleLog').addEventListener('click', () => {
+                state.scaleType = 'logarithmic';
+                document.getElementById('scaleLog').className = "px-2.5 py-1 rounded-lg font-medium transition-all bg-indigo-600 text-white shadow-sm";
+                document.getElementById('scaleLinear').className = "px-2.5 py-1 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition-all";
+                chartInstance.options.scales.yCell.type = 'logarithmic';
+                chartInstance.update();
+            });
+
+            document.getElementById('playBtn').addEventListener('click', togglePlay);
+
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                if (state.isPlaying) togglePlay();
+                state.currentTime = 0;
+                state.params.A = { qp: 20, initialDensity: 0.8, lagDuration: 1.5, growthRate: 1.2, carryingCapacity: 18, deathRate: 0.45 };
+                state.params.B = { qp: 35, initialDensity: 1.0, lagDuration: 1.2, growthRate: 1.4, carryingCapacity: 25, deathRate: 0.35 };
+                syncSlidersWithState();
+                updateChartDatasets();
+            });
+
+            window.addEventListener('resize', () => {
+                resizeMicroCanvas();
+                updateUI(state.currentTime);
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            resizeMicroCanvas();
+            initChart();
+            setupEventListeners();
+            syncSlidersWithState();
+            updateChartDatasets();
+        });
+    </script>
+</body>
+</html>
